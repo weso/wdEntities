@@ -19,6 +19,8 @@ import scala.jdk.CollectionConverters._
 
 object EntityResolver {
 
+  val MAX = 300
+
   def parse(entityNumber: Int, body: String): IO[Option[Json]] = {
     import org.jsoup.Jsoup
     import org.jsoup.helper.Validate
@@ -32,8 +34,8 @@ object EntityResolver {
       val child = element.child(0)
       if (child.hasClass("noarticletext")) None
       else { // child = <table> <thead> ... </thead> <tbody> <tr> ... </tr> </table>
-        val conceptUri = s"http://www.wikidata.org/wiki/Special:EntitySchemaText/${entityNumber}"
-        val webUri = s"https://www.wikidata.org/wiki/EntitySchema:${entityNumber}"
+        val conceptUri = s"https://www.wikidata.org/wiki/Special:EntitySchemaText/E${entityNumber}"
+        val webUri = s"https://www.wikidata.org/wiki/EntitySchema:E${entityNumber}"
         val rows: Elements = child.select("tbody tr")
         val initial: Map[String, Json] = Map()
         def cmb(currentMap: Map[String,Json], e: Element): Map[String,Json] = {
@@ -54,6 +56,7 @@ object EntityResolver {
 
         Some(Json.fromFields(
           List(
+            ("id", Json.fromString("E" + entityNumber)),
             ("conceptUri", Json.fromString(conceptUri)),
             ("webUri", Json.fromString(webUri)),
             ("title",Json.fromString(doc.title())),
@@ -64,12 +67,17 @@ object EntityResolver {
     }
   }
 
+  def showJson(maybeJson: Option[Json]): String = maybeJson match {
+    case None => "<>"
+    case Some(json) => json.hcursor.downField("title").as[String].getOrElse("<No title>")
+  }
+
   def getUri(entityNumber: Int, uri: Uri, client: Client[IO]): IO[Option[Json]] = for {
     // _ <- IO { println(s"Access to $uri") }
     body <- client.get(uri)(_ .bodyAsText.compile.toVector.map(_.mkString))
-    // _ <- IO { println(s"Content:\n$body\n")}
-    json <- parse(entityNumber, body)
-  } yield json
+    maybeJson <- parse(entityNumber, body)
+    _ <- IO { println(s"Content for entity number $entityNumber ${showJson(maybeJson)}")}
+  } yield maybeJson
 
   def resolve(i: Int, client: Client[IO]): IO[Option[Json]] = {
     val uri =uri"https://www.wikidata.org/wiki/".withPath(s"/wiki/EntitySchema:E${i}")
@@ -77,7 +85,7 @@ object EntityResolver {
   }
 
   def run(client: Client[IO]): IO[Json] = {
-    val ls = 1 to 130
+    val ls = 1 to MAX
     for {
      maybeJsons <- ls.map(resolve(_,client)).toList.sequence
     } yield Json.fromValues(maybeJsons.flatten)
