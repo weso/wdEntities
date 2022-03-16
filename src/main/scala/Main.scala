@@ -19,7 +19,7 @@ import scala.jdk.CollectionConverters._
 
 object EntityResolver {
 
-  val MAX = 300
+  val MAX = 500
 
   def parse(entityNumber: Int, body: String): IO[Option[Json]] = {
     import org.jsoup.Jsoup
